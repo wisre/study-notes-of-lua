@@ -114,4 +114,127 @@ Number代表着实数，字符串代表着字符数组，字符串能够包含�
   方括号用来获取table类型的值，访问数组值t[i]也可以用gettable_event(t,i)来表示，全局变量作为普通table数组的域，叫做环境table，每个函数都有环境table的引用，以便函数里的全局变量能够指向环境变量表，当一个函数被创建，它继承创建它的函数的上下文信息，为了获取lua函数的环境表，能够调用getfenv函数，可以调用setfenv来设置环境表。可以通过_env.x方式访问全局变量，也可以用gettable_event(_env,"x")来访问。_env是函数的运行环境
   
 # 语句
+  lua几乎支持所有的在pascal和C里常见的语句，包括：赋值语句、控制语句、函数调用和变量声明。
   
+## 语句块
+  lua的执行单元叫做chunk，一个chunk块由一系列的语句组成，这个语句都是顺序执行的，每个语句由分号分隔，chunk的样式如下：
+   
+  <p>chunk ::={stat[';']}</p>
+   
+  lua中不存在空语句，语句;;是非法的。lua可以操作chunk语句为匿名函数的函数体，这个匿名函数可以有多个参数，同样的，chunk语句也能定义局部变量，接受参数的传递和返回值。
+   
+  一个chunk块能够存储在文件里，或者存储在主函数的一个字符串变量里。为了执行chunk块，lua首先为虚拟机把它预编译成指令集，然后再利用解释器执行。
+   
+  chunk块也能够用luac预编译成二进制格式，程序的源码也编译形式能相互转化，lua能够自动的检测文件的类型然后正确的执行。
+
+## block
+  block跟chunk一样，是一系列的语句，block能够通过do和end明确的划定界限而产生一个语句，明确范围的block能够限定变量的作用范围，有时也能用来在其他block的中间增加一个return和break语句。
+   
+  <p>block ::= chunk</p>
+  <p>stat ::= do block end</p>
+  
+ ## 赋值语句
+   lua支持多重赋值，因此，赋值语句的语法是在=号左边是一系列的变量，在右边是一系列的表达式，两边的元素列表用逗号分隔。
+   
+   <p>stat ::= varlist `=´ explist</p>
+   <p>varlist ::= var {`,´ var}</p>
+   <p>explist ::= exp {`,´ exp}</p>
+   
+   在赋值前，值得列表的长度要调整为变量列表的长度，假如值得列表的长度更长，多余的值被丢弃，假如变量的列表更长，超出值列表长度的变量被赋值为nil，假如在值列表中有函数调用，则函数的所有返回值在值列表调整前会成为值列表的元素。
+   
+   赋值语句首先执行所有的表达式，然后才开始赋值，因此下面的代码设置a[3]为20，并不会影响a[4]的值，因为在a[i]在i被赋值为4前，已经确定为3了。
+   
+   <p> i = 3</[>
+   <p>i, a[i] = i+1, 20</p>
+   
+   同样的，下面的代码是交换x和y的值
+   
+   <p>x,y=y,x</p>
+   
+   赋值给全局变量和数组元素的操作能够用操作元表来替换，例如t[i]= val和 settable_event(t,i,val)是相等的，给全局变量赋值x= val和 _env.x=  val以及settable(_env,x,val)是相等的，_env是正在运行的函数的上下文环境。
+   
+## 控制语句
+  控制结构if、while和repeat有着通用的语义和语法，如下所示：
+ 
+  stat ::= while exp do block end
+  
+  stat ::= repeat block until exp
+  
+  stat ::= if exp then block {elseif exp then block} [else block] end
+  
+  控制结构的条件表达式能够接受任何值，false和nil被当做条件否，所有其他的值当做条件成立。在repeat..until结构中，内部的block块不会在until这里结束，而是在条件表达式后才结束，因此，条件表达式能够引用block里面的值。
+  
+  return语句用来返回函数也chunk的值，由于函数和chunk可以返回多个值，因此return的语法如下：
+   
+  stat ::= return [explist]
+  
+  break语句用来终止while循环，repeat循环和for循环的执行。
+  
+  return和break语句只能放在block的最后，假如确实需要房子啊block的中间，应该使用一个有限定范围的block语句，例如do return end或者do break end
+  
+## for语句
+  for语句有两种形式，一种数字循环型的，一种通用的循环样式
+  
+  数字型的循环通过一个控制变量等差递增或者等差递减来实现循环，它的语法如下：
+
+  stat ::= for Name `=´ exp `,´ exp [`,´ exp] do block end
+  
+  name的初始值是第一个表达式的值，第二个表达式是变量的限定值，第三个变量的值是等差系数，下面的for循环语句与下面的代码是等价的
+  
+  for v = e1, e2, e3 do block end
+  
+  等价于
+  
+  do
+       local var, limit, step = tonumber(e1), tonumber(e2), tonumber(e3)
+       if not (var and limit and step) then error() end
+       while (step > 0 and var <= limit) or (step <= 0 and var >= limit) do
+         local v = var
+         block
+         var = var + step
+       end
+     end
+
+Tips
+* 所有的三个控制变量在循环开始前都会计算一次，它们的结果必须是数字
+* var limit step是不存在的变量，在这里是为了更好的解释
+* 假如第三个表达式是空值，等差系数则为1
+* 能够用break退出for循环
+* 循环变量v是循环体内的局部变量，在循环结束后就会别销毁，假如你需要这个值，你需要在循环结束前把它复制给其他变量
+
+通用的for循环语句也迭代器函数一起工作，每次迭代，迭代器函数被调用以产生一个新值，当值变为nil时，循环结束。通用for循环的语法如下：
+
+stat ::= for namelist in explist do block end
+	namelist ::= Name {`,´ Name}
+	
+下面的for循环语句：
+
+for var_1, ···, var_n in explist do block end
+
+等价于：
+
+do
+       local f, s, var = explist
+       while true do
+         local var_1, ···, var_n = f(s, var)
+         var = var_1
+         if var == nil then break end
+         block
+       end
+     end
+     
+Tips：
+* explist仅仅执行一次，它的值是一个迭代函数，一个状态和一个迭代变量初始值
+
+## 函数调用
+函数调用的语法如下：
+
+stat ::= functioncall
+
+## 变量本地声明
+
+本地变量能够在block的任何地方声明，声明也能包括初始化赋值：
+
+stat ::= local namelist [`=´ explist]
+
+一个chunk也是一个block，变量能够在限定范围的block外，但是在chunk内声明，在这种情况下，变量的作用范围是chunk结束。
